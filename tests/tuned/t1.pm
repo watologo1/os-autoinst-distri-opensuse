@@ -12,7 +12,7 @@ use Mojo::Base 'opensusebasetest';
 
 use testapi;
 use serial_terminal qw(select_serial_terminal reboot);
-use utils qw(zypper_call systemctl script_output);
+use utils qw(zypper_call systemctl);
 
 
 sub install_package_and_service {
