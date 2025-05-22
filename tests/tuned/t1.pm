@@ -14,21 +14,37 @@ use testapi;
 use serial_terminal qw(select_serial_terminal reboot);
 
 
+sub install_package_and_service {
+    my ($self, $pkg_name, $service_name) = @_;
+
+    # Paket installieren
+    zypper_call("in $pkg_name");
+
+    # Service aktivieren und starten (falls benötigt)
+    systemctl("enable $service_name");
+    systemctl("start $service_name");
+}
+
+sub do_reboot {
+    # Reboot durchführen
+    type_string("reboot\n");
+    assert_shutdow();
+    reset_consoles;
+    boot_to_login_screen(timeout => 300);
+}
 
 sub run {
-    record_info('HALLO', 'Wurst ist Lecker!');
+
+    my ($self) = @_;
+
     select_serial_terminal;
 
-    my $output = script_output('cat /etc/os-release');
-
-    record_info('os-release', $output);
-
-    # simply wait one minute to see a uptime
-    sleep 65;
-
-    record_info('uptime', script_output('uptime'));
-    reboot;
-    record_info('uptime', script_output('uptime'));
+    # 1. Paket installieren & Reboot
+    $self->install_package_and_service(
+        "tuned",  # Name des Pakets
+        "tuned"   # Name des systemd-Service
+	);
+    do_reboot;
 }
 
 

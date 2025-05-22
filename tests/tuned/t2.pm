@@ -30,8 +30,8 @@ sub run {
     $self->pass("Paket 'tuned' erfolgreich installiert.");
 
     # 2. Kernel-Bootparameter setzen
-    systemctl("enable tuned")
-    systemctl("start tuned")
+    systemctl("enable tuned");
+    systemctl("start tuned");
 
    
     # 3. Reboot durchführen
@@ -44,10 +44,10 @@ sub run {
     $self->comment("Überprüfe, ob die Kernel-Bootparameter aktiv sind...");
 
     my @expected_kernel_parameters = (
-        "hardened_usercopy=on"
-        "init_on_free=1"
-        "init_on_alloc=1"
-	"page_poison=on"
+        "hardened_usercopy=on",
+        "init_on_free=1",
+        "init_on_alloc=1",
+	"page_poison=on",
 	"page_table_check=on"
     ); # <-- HIER EINE LISTE VON ERWARTETEN PARAMETERN ANPASSEN
 
