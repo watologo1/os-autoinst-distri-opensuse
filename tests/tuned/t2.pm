@@ -18,10 +18,10 @@ use serial_terminal qw(select_serial_terminal reboot);
 sub run {
    my $self = shift;
 
-    $self->comment("Starte Test für Kernel-Bootparameter nach Reboot.");
+    record_info("Starte Test für Kernel-Bootparameter nach Reboot.");
 
     # 1. Paket installieren
-    $self->comment("Installiere Paket 'tuned'...");
+    record_info("Installiere Paket 'tuned'...");
     my ($exit_code, $output) = $self->zypper_install("tuned");
     if ($exit_code != 0) {
         $self->fail("Installation von 'tuned' fehlgeschlagen. Ausgabe: $output");
@@ -35,13 +35,13 @@ sub run {
 
    
     # 3. Reboot durchführen
-    $self->comment("Führe Reboot durch...");
+    record_info("Führe Reboot durch...");
     $self->reboot();
     $self->wait_for_console(); # Warten, bis die Konsole wieder erreichbar ist
     $self->login();           # Optional: Falls eine Anmeldung erforderlich ist
 
     # 4. Überprüfen, ob der Kernel-Bootparameter aktiv ist
-    $self->comment("Überprüfe, ob die Kernel-Bootparameter aktiv sind...");
+    record_info("Überprüfe, ob die Kernel-Bootparameter aktiv sind...");
 
     my @expected_kernel_parameters = (
         "hardened_usercopy=on",
@@ -65,7 +65,7 @@ sub run {
             $self->fail("Kernel-Bootparameter '$param' ist NICHT aktiv. Gefunden in /proc/cmdline: $current_cmdline_output");
         }
     }
-   $self->comment("Test für Kernel-Bootparameter nach Reboot abgeschlossen.");
+   record_info("Test für Kernel-Bootparameter nach Reboot abgeschlossen.");
 }
 
 
