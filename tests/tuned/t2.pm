@@ -12,7 +12,7 @@ use Mojo::Base 'opensusebasetest';
 
 use testapi;
 use serial_terminal qw(select_serial_terminal reboot);
-
+use utils qw(zypper_call systemctl);
 
 
 sub run {
@@ -22,7 +22,7 @@ sub run {
 
     # 1. Paket installieren
     record_info("Installiere Paket 'tuned'...");
-    my ($exit_code, $output) = $self->zypper_install("tuned");
+    my ($exit_code, $output) = $self->zypper_call("in tuned");
     if ($exit_code != 0) {
         $self->fail("Installation von 'tuned' fehlgeschlagen. Ausgabe: $output");
         return;
