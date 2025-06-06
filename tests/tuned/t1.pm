@@ -15,14 +15,6 @@ use serial_terminal qw(select_serial_terminal reboot);
 use utils qw(zypper_call systemctl);
 
 
-sub tuned_verify_profile {
-    my $tuned_profile = shift;
-    assert_script_run "tuned-adm profile $tuned_profile";
-    validate_script_output 'tuned-adm active', sub { m/${tuned_profile}/ };
-    assert_script_run "tuned-adm verify";
-}
-
-
 sub install_package_and_service {
     my ($self, $pkg_name, $service_name) = @_;
 
@@ -38,7 +30,15 @@ sub tuned_set_profile {
     record_info("Activating Profile $tuned_profile");
     assert_script_run "tuned-adm profile $tuned_profile";
     validate_script_output 'tuned-adm active', sub { m/${tuned_profile}/ };
-    assert_script_run("tuned-adm verify", 120);
+    my $verify_output = script_output("tuned-adm verify 2>&1",
+                                      proceed_on_failure => 1);
+    my $verify_exit = $? >> 8;
+
+    if ($verify_exit != 0) {
+      record_info("tuned-adm verify FAILED for $tuned_profile",
+                  $verify_output,
+                  result => 'fail');
+    }
     record_info("$tuned_profile activated");
 }
 
@@ -60,7 +60,11 @@ sub test_kernel_params {
     record_info("Starting kernel parameter test on hardening profile");
     tuned_set_profile("hardening");
     reboot();
+    select_serial_terminal;
+
+    validate_script_output 'tuned-adm active', sub { m/hardening/ };
     my $proc_cmdline = script_output("cat \'$procfile\'");
+    record_info("Kernel Params", "Current params: $proc_cmdline");
 
     foreach my $param (@params) {
         if ($proc_cmdline !~ /\Q$param\E/) {
@@ -72,7 +76,8 @@ sub test_kernel_params {
         my $missing = join("\n  - ", @missing_params);
         my $expected = join("\n  - ", @params);
         record_info("Missing Kernel Parameters After Reboot",
-                    "$procfile: $proc_cmdline\nExpected kernel params: $expected\nMissing kernel params: $missing", result => 'fail');
+                    "$procfile: $proc_cmdline\nExpected kernel params: $expected\nMissing kernel params: $missing",
+                    result => 'fail');
     }
 }
 
@@ -90,6 +95,11 @@ sub run {
                           'virtual-guest'
                          );
 
+    $self->install_package_and_service(
+        "tuned",
+        "tuned"
+    );
+
     my $available_profiles = script_output('tuned-adm list');
     record_info("TUNED Profiles", "Available profiles:\n$available_profiles");
     record_info("TUNED Profiles getting verfied",
@@ -97,16 +107,11 @@ sub run {
 
     select_serial_terminal;
 
-    $self->install_package_and_service(
-        "tuned",
-        "tuned"
-    );
-
     foreach my $profile (@tuned_profiles) {
         if ($available_profiles !~ /^\-\s$profile$/m) {
-            die("Profile $profile not available");
-            next;
-          }
+            record_info("Profile $profile not available", "", result => 'fail');
+            next
+        }
         tuned_set_profile($profile);
     }
 
