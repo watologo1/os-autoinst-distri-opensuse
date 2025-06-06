@@ -15,37 +15,116 @@ use serial_terminal qw(select_serial_terminal reboot);
 use utils qw(zypper_call systemctl);
 
 
+sub tuned_verify_profile {
+    my $tuned_profile = shift;
+    assert_script_run "tuned-adm profile $tuned_profile";
+    validate_script_output 'tuned-adm active', sub { m/${tuned_profile}/ };
+    assert_script_run "tuned-adm verify";
+}
+
+
 sub install_package_and_service {
     my ($self, $pkg_name, $service_name) = @_;
 
-    # Paket installieren
     zypper_call("in $pkg_name");
 
-    # Service aktivieren und starten (falls benötigt)
     systemctl("enable $service_name");
     systemctl("start $service_name");
 }
 
-sub do_reboot {
-    # Reboot durchführen
-    type_string("reboot\n");
-    assert_shutdow();
-    reset_consoles;
-    boot_to_login_screen(timeout => 300);
+sub tuned_set_profile {
+    my $tuned_profile = shift;
+
+    record_info("Activating Profile $tuned_profile");
+    assert_script_run "tuned-adm profile $tuned_profile";
+    validate_script_output 'tuned-adm active', sub { m/${tuned_profile}/ };
+    assert_script_run("tuned-adm verify", 120);
+    record_info("$tuned_profile activated");
+}
+
+sub test_kernel_params {
+
+    # Test whether kernel parameters are set and survive reboot
+    # using hardening profile
+
+    my @missing_params;
+    my $procfile = '/proc/cmdline';
+    my @params = (
+                  'hardened_usercopy=on',
+                  'init_on_free=1',
+                  'init_on_alloc=1',
+                  'page_poison=on',
+                  'page_table_check=on'
+                 );
+
+    record_info("Starting kernel parameter test on hardening profile");
+    tuned_set_profile("hardening");
+    reboot();
+    my $proc_cmdline = script_output("cat \'$procfile\'");
+
+    foreach my $param (@params) {
+        if ($proc_cmdline !~ /\Q$param\E/) {
+            push @missing_params, $param;
+        }
+    }
+
+    if (@missing_params) {
+        my $missing = join("\n  - ", @missing_params);
+        my $expected = join("\n  - ", @params);
+        record_info("Missing Kernel Parameters After Reboot",
+                    "$procfile: $proc_cmdline\nExpected kernel params: $expected\nMissing kernel params: $missing", result => 'fail');
+    }
 }
 
 sub run {
 
     my ($self) = @_;
+    my $tuned_log = '/var/log/tuned/tuned.log';
+
+    # list of profiles we check
+    my @tuned_profiles = (
+                          'balanced',
+                          'powersave',
+                          'throughput-performance',
+                          'network-latency',
+                          'virtual-guest'
+                         );
+
+    my $available_profiles = script_output('tuned-adm list');
+    record_info("TUNED Profiles", "Available profiles:\n$available_profiles");
+    record_info("TUNED Profiles getting verfied",
+                "Verifying profiles:\n@tuned_profiles");
 
     select_serial_terminal;
 
-    # 1. Paket installieren & Reboot
     $self->install_package_and_service(
-        "tuned",  # Name des Pakets
-        "tuned"   # Name des systemd-Service
-	);
-    do_reboot;
+        "tuned",
+        "tuned"
+    );
+
+    foreach my $profile (@tuned_profiles) {
+        if ($available_profiles !~ /^\-\s$profile$/m) {
+            die("Profile $profile not available");
+            next;
+          }
+        tuned_set_profile($profile);
+    }
+
+
+    # Check for errors in tuned.log
+    my $log_check = script_output(
+       'grep -i "ERROR" /var/log/tuned/tuned.log || echo "NO_ERRORS_FOUND"',
+       proceed_on_failure => 1
+    );
+
+    if ($log_check !~ /NO_ERRORS_FOUND/) {
+      record_info("Errors in log", $log_check);
+      record_info("Last 1000 lines of log",
+                  script_output('tail -n 1000 /var/log/tuned/tuned.log'));
+    }
+
+    test_kernel_params();
+
 }
 
 
