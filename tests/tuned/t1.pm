@@ -27,7 +27,7 @@ sub install_package_and_service {
 sub tuned_set_profile {
     my $tuned_profile = shift;
 
-    record_info("Activating Profile $tuned_profile");
+    record_info("Activating Profile", "Activating Profile $tuned_profile");
     assert_script_run "tuned-adm profile $tuned_profile";
     validate_script_output 'tuned-adm active', sub { m/${tuned_profile}/ };
     my $verify_output = script_output("tuned-adm verify 2>&1",
@@ -35,9 +35,9 @@ sub tuned_set_profile {
     my $verify_exit = $? >> 8;
 
     if ($verify_exit != 0) {
-      record_info("tuned-adm verify FAILED for $tuned_profile",
-                  $verify_output,
-                  result => 'fail');
+        record_info("tuned-adm verify FAILED",
+                    "tuned-adm verify FAILED for $tuned_profile:\n$verify_output",
+                    result => 'fail');
     }
     record_info("$tuned_profile activated");
 }
@@ -47,6 +47,7 @@ sub test_kernel_params {
     # Test whether kernel parameters are set and survive reboot
     # using hardening profile
 
+    my $kern_profile = "hardening"
     my @missing_params;
     my $procfile = '/proc/cmdline';
     my @params = (
@@ -57,12 +58,13 @@ sub test_kernel_params {
                   'page_table_check=on'
                  );
 
-    record_info("Starting kernel parameter test on hardening profile");
-    tuned_set_profile("hardening");
+    record_info("Kernel Parm Test",
+                "Starting kernel parameter test on $kern_profile profile");
+    tuned_set_profile($kern_profile);
     reboot();
     select_serial_terminal;
 
-    validate_script_output 'tuned-adm active', sub { m/hardening/ };
+    validate_script_output 'tuned-adm active', sub { m/$kern_profile/ };
     my $proc_cmdline = script_output("cat \'$procfile\'");
     record_info("Kernel Params", "Current params: $proc_cmdline");
 
@@ -103,12 +105,14 @@ sub run {
 
     my $available_profiles = script_output('tuned-adm list');
     record_info("TUNED Profiles", "Available profiles:\n$available_profiles");
-    record_info("TUNED Profiles getting verfied",
+    record_info("TUNED Profiles",
                 "Verifying profiles:\n@tuned_profiles");
 
     foreach my $profile (@tuned_profiles) {
-        if ($available_profiles !~ /^\-\s$profile$/m) {
-            record_info("Profile $profile not available", "", result => 'fail');
+        if ($available_profiles !~ /^\-\s$profile/m) {
+            record_info("Profile $profile",
+                        "Profile $profile not available",
+                        result => 'fail');
             next
         }
         tuned_set_profile($profile);
@@ -117,18 +121,22 @@ sub run {
 
     # Check for errors in tuned.log
     my $log_check = script_output(
-       'grep -i "ERROR" /var/log/tuned/tuned.log || echo "NO_ERRORS_FOUND"',
-       proceed_on_failure => 1
+        'grep -i "ERROR" /var/log/tuned/tuned.log || echo "NO_ERRORS_FOUND"',
+        proceed_on_failure => 1
     );
 
     if ($log_check !~ /NO_ERRORS_FOUND/) {
-      record_info("Errors in log", $log_check);
-      record_info("Last 1000 lines of log",
-                  script_output('tail -n 1000 /var/log/tuned/tuned.log'));
+        record_info("Errors in log", $log_check);
+        record_info("Last 1000 lines of log",
+                    script_output('tail -n 1000 /var/log/tuned/tuned.log'));
     }
 
-    test_kernel_params();
-
+    if ($available_profiles !~ /^\-\shardening/m) {
+        test_kernel_params();
+    } else {
+        record_info("Skip Kernel Test",
+                    "Hardening test for testing kernel parmeters not found");
+    }
 }
 
 
