@@ -47,7 +47,7 @@ sub test_kernel_params {
     # Test whether kernel parameters are set and survive reboot
     # using hardening profile
 
-    my $kern_profile = "hardening"
+    my $kern_profile = "hardening";
     my @missing_params;
     my $procfile = '/proc/cmdline';
     my @params = (
