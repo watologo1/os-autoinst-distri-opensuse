@@ -95,6 +95,7 @@ sub run {
                           'virtual-guest'
                          );
 
+    select_serial_terminal;
     $self->install_package_and_service(
         "tuned",
         "tuned"
@@ -104,8 +105,6 @@ sub run {
     record_info("TUNED Profiles", "Available profiles:\n$available_profiles");
     record_info("TUNED Profiles getting verfied",
                 "Verifying profiles:\n@tuned_profiles");
-
-    select_serial_terminal;
 
     foreach my $profile (@tuned_profiles) {
         if ($available_profiles !~ /^\-\s$profile$/m) {

@@ -31,5 +31,4 @@ sub run {
     record_info('uptime', script_output('uptime'));
 }
 
-
 42;
