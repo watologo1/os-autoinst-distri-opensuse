@@ -27,19 +27,38 @@ sub install_package_and_service {
 sub tuned_set_profile {
     my $tuned_profile = shift;
 
-    record_info("Activating Profile", "Activating Profile $tuned_profile");
+    record_info("$tuned_profile Profile", "Activating Profile $tuned_profile");
     assert_script_run "tuned-adm profile $tuned_profile";
+    validate_script_output 'tuned-adm active', sub { m/${tuned_profile}/ };
+    systemctl("restart tuned");
     validate_script_output 'tuned-adm active', sub { m/${tuned_profile}/ };
     my $verify_output = script_output("tuned-adm verify 2>&1",
                                       proceed_on_failure => 1);
     my $verify_exit = $? >> 8;
 
     if ($verify_exit != 0) {
-        record_info("tuned-adm verify FAILED",
+        record_info("tuned-adm verify",
                     "tuned-adm verify FAILED for $tuned_profile:\n$verify_output",
                     result => 'fail');
     }
     record_info("$tuned_profile activated");
+}
+
+# The errors accumulate, but we do not care, better show them often
+sub check_errors_in_log {
+
+    # Check for errors in tuned.log
+    my $log_check = script_output(
+        'grep -i "ERROR" /var/log/tuned/tuned.log || echo "NO_ERRORS_FOUND"',
+        proceed_on_failure => 1
+    );
+
+    if ($log_check !~ /NO_ERRORS_FOUND/) {
+        record_info("Errors in log", $log_check);
+        record_info("Last 1000 lines of log",
+                    script_output('tail -n 1000 /var/log/tuned/tuned.log',
+				  result => 'fail'));
+    }
 }
 
 sub test_kernel_params {
@@ -47,7 +66,7 @@ sub test_kernel_params {
     # Test whether kernel parameters are set and survive reboot
     # using hardening profile
 
-    my $kern_profile = "hardening";
+    my $kern_profile = shift;
     my @missing_params;
     my $procfile = '/proc/cmdline';
     my @params = (
@@ -88,6 +107,7 @@ sub run {
     my ($self) = @_;
     my $tuned_log = '/var/log/tuned/tuned.log';
 
+    my $kern_profile  = "hardening";
     # list of profiles we check
     my @tuned_profiles = (
                           'balanced',
@@ -118,24 +138,13 @@ sub run {
         tuned_set_profile($profile);
     }
 
+    check_errors_in_log();
 
-    # Check for errors in tuned.log
-    my $log_check = script_output(
-        'grep -i "ERROR" /var/log/tuned/tuned.log || echo "NO_ERRORS_FOUND"',
-        proceed_on_failure => 1
-    );
-
-    if ($log_check !~ /NO_ERRORS_FOUND/) {
-        record_info("Errors in log", $log_check);
-        record_info("Last 1000 lines of log",
-                    script_output('tail -n 1000 /var/log/tuned/tuned.log'));
-    }
-
-    if ($available_profiles !~ /^\-\shardening/m) {
-        test_kernel_params();
+    if ($available_profiles !~ /^\-\s$kern_profile/m) {
+        test_kernel_params($kern_profile);
     } else {
-        record_info("Skip Kernel Test",
-                    "Hardening test for testing kernel parmeters not found");
+        record_info("Skip Kernel",
+                    "Profile $kern_profile for testing kernel parmeters not found");
     }
 }
 
